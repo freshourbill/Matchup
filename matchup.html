@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Matchmaker</title>
+  <style>
+    body {
+      background-color: #111;
+      color: white;
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      margin: 0;
+    }
+
+    h1 {
+      text-align: center;
+    }
+
+    .container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .input-stats-row {
+      display: flex;
+      justify-content: center;
+      gap: 60px;
+      width: 100%;
+      max-width: 1000px;
+    }
+
+    .fighter-column {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 100%;
+    }
+
+    input {
+      padding: 10px;
+      width: 100%;
+      max-width: 440px;
+      border-radius: 8px;
+      border: none;
+      margin-bottom: 10px;
+    }
+
+    .fighter-box {
+      background: #222;
+      padding: 20px;
+      border-radius: 10px;
+      width: 100%;
+      max-width: 440px;
+    }
+
+    .center-button {
+      margin-top: 20px;
+    }
+
+    button {
+      padding: 10px 20px;
+      background-color: #333;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background-color: #555;
+    }
+
+    h4 {
+      margin-top: 15px;
+      font-size: 16px;
+      color: #ccc;
+    }
+
+    p {
+      margin: 4px 0;
+      white-space: normal;
+      overflow: visible;
+    }
+
+    li {
+      white-space: normal;
+      overflow: visible;
+    }
+
+    li.win {
+      color: #4caf50;
+    }
+
+    li.loss {
+      color: #f44336;
+    }
+
+    .checkmark {
+      color: #4caf50;
+      font-weight: bold;
+      margin-left: 6px;
+      cursor: help;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Match Up</h1>
+
+    <div class="input-stats-row">
+      <div class="fighter-column">
+        <input id="fighter1" placeholder="Fighter 1">
+        <div class="fighter-box" id="fighter1Stats"></div>
+      </div>
+
+      <div class="fighter-column">
+        <input id="fighter2" placeholder="Fighter 2">
+        <div class="fighter-box" id="fighter2Stats"></div>
+      </div>
+    </div>
+
+    <div class="center-button">
+      <button onclick="getMatchup()">Compare</button>
+    </div>
+  </div>
+
+  <script>
+    async function getMatchup() {
+      const fighter1 = document.getElementById('fighter1').value.trim();
+      const fighter2 = document.getElementById('fighter2').value.trim();
+
+      try {
+        const response = await fetch('http://127.0.0.1:5000/get_stats', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fighter1, fighter2 })
+        });
+
+        const data = await response.json();
+
+        document.getElementById('fighter1Stats').innerHTML = formatStats(fighter1, data.fighter1, data.fighter2);
+        document.getElementById('fighter2Stats').innerHTML = formatStats(fighter2, data.fighter2, data.fighter1);
+      } catch (err) {
+        console.error("Fetch error:", err);
+        alert("Error fetching data. Check console.");
+      }
+    }
+
+    function formatStats(name, stats, compareStats) {
+      if (!stats || Object.keys(stats).length === 0)
+        return `<h3>${name}</h3><p>Fighter not found</p>`;
+
+      let html = `<h3>${name}</h3>`;
+      const sectionOrder = ["Bio", "Record", "UFC Record", "Striking", "Grappling"];
+
+      const lowerIsBetter = ["Absorbed", "SApM"];
+      const higherIsBetter = [
+        "Landed",
+        "Accuracy",
+        "Defense",
+        "Defence",
+        "Submissions Attempted",
+        "Wins by",
+        "Total"
+      ];
+
+      sectionOrder.forEach(section => {
+        if (stats[section]) {
+          html += `<h4>${section}</h4>`;
+
+          if (section === "Striking" || section === "Grappling") {
+            stats[section].forEach((stat, i) => {
+              let value = stat.value ?? 'N/A';
+              let checkmark = '';
+
+              // ✅ Formatting values properly
+              if (!isNaN(value)) {
+                value = parseFloat(value);
+                if (value > 0 && value <= 1 && /Accuracy|Defen[cs]e/.test(stat.label)) {
+                  value = `${Math.round(value * 100)}%`;
+                } else {
+                  value = value.toFixed(2);
+                }
+              }
+
+              if (compareStats && compareStats[section]) {
+                let val1 = value;
+                let val2 = compareStats[section][i]?.value;
+
+                if (typeof val1 === 'string' && val1.includes('%')) val1 = parseFloat(val1.replace('%', ''));
+                if (typeof val2 === 'string' && val2.includes('%')) val2 = parseFloat(val2.replace('%', ''));
+                if (typeof val1 === 'string') val1 = parseFloat(val1);
+                if (typeof val2 === 'string') val2 = parseFloat(val2);
+
+                if (!isNaN(val1) && !isNaN(val2)) {
+                  const label = stat.label;
+                  let isBetter = false;
+
+                  if (lowerIsBetter.some(k => label.includes(k))) {
+                    isBetter = val1 < val2;
+                  } else if (higherIsBetter.some(k => label.includes(k))) {
+                    isBetter = val1 > val2;
+                  }
+
+                  if (isBetter) {
+                    checkmark = '';
+                  }
+                }
+              }
+
+              html += `<p><strong>${stat.label}:</strong> ${value}${checkmark}</p>`;
+            });
+          } else {
+            for (let key in stats[section]) {
+              const value = stats[section][key] ?? 'N/A';
+              html += `<p><strong>${key}:</strong> ${value}</p>`;
+            }
+          }
+        }
+      });
+
+      if (stats["Last 5 Fights"] && stats["Last 5 Fights"].length > 0) {
+        html += `<h4>Last 5 Fights</h4><ul>`;
+        stats["Last 5 Fights"].forEach(fight => {
+          const resultClass = fight.result === 'Win' ? 'win' : 'loss';
+          html += `<li class="${resultClass}">${fight.opponent} - ${fight.result}</li>`;
+        });
+        html += `</ul>`;
+      }
+
+      return html;
+    }
+  </script>
+</body>
+</html>
